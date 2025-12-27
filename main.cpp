@@ -21,7 +21,6 @@ struct Apple {
     bool active;
 };
 
-// --- Game States ---
 enum GameState { PLAYING, GAME_OVER };
 GameState gameState = PLAYING;
 
@@ -30,10 +29,16 @@ enum Direction { UP, DOWN, LEFT, RIGHT };
 const float APPLE_SIZE = 0.6f;
 const int MAX_APPLES = 3;
 
+struct Wall {
+    float x, z; // Center position
+    float w, d; // Width and depth
+};
+
 // --- Game Variables ---
 Direction currentDir = UP;
 vector<Segment> snake = {{0, 0}, {0, 1}, {0, 2}};  // Initial snake
 vector<Apple> apples;  // Active apples
+vector<Wall> walls;    // Walls in the game
 int score = 0;
 int highScore = 0;
 
@@ -46,7 +51,6 @@ GLuint snakeTexture = 0;
 GLuint snakeHeadTexture = 0;
 GLuint appleTexture = 0;
 
-// --- Texture Loading Function ---
 GLuint loadTexture(const char *filename, bool flipVertically = true) {
     GLuint textureID = 0;
     stbi_set_flip_vertically_on_load(flipVertically);
@@ -150,11 +154,24 @@ void spawnApple() {
                 break;
             }
         }
-        
-        // Check if inside walls (with margin)
-        if (newApple.x <= -9.5f || newApple.x >= 9.5f ||
-            newApple.z <= -9.5f || newApple.z >= 9.5f) {
-            validPosition = false;
+        if (!validPosition) continue;
+
+        // Check collision with walls
+        for (const auto& wall : walls) {
+            float wall_half_w = wall.w / 2.0f;
+            float wall_half_d = wall.d / 2.0f;
+
+            float wall_min_x = wall.x - wall_half_w;
+            float wall_max_x = wall.x + wall_half_w;
+            float wall_min_z = wall.z - wall_half_d;
+            float wall_max_z = wall.z + wall_half_d;
+
+            // AABB check for apple position against the wall
+            if (newApple.x >= wall_min_x && newApple.x <= wall_max_x &&
+                newApple.z >= wall_min_z && newApple.z <= wall_max_z) {
+                validPosition = false;
+                break;
+            }
         }
         
         attempts++;
@@ -220,13 +237,45 @@ void initApples() {
     spawnApple();
 }
 
+// --- Wall Functions ---
+void initWalls() {
+    walls.clear();
+    // Boundary walls
+    walls.push_back({0, -10, 20.5, 0.5});  // South
+    walls.push_back({0, 10, 20.5, 0.5});   // North
+    walls.push_back({-10, 0, 0.5, 20.5});  // West
+    walls.push_back({10, 0, 0.5, 20.5});   // East
+
+    // Interior walls
+    walls.push_back({-4, -4, 4, 0.8});
+    walls.push_back({5, 3, 0.8, 6});
+}
+
+
 // --- Collision Detection ---
 bool checkWallCollision() {
     if (snake.empty()) return false;
     
     Segment head = snake[0];
-    // Check if head hits boundary walls
-    return (head.x <= -10 || head.x >= 10 || head.z <= -10 || head.z >= 10);
+
+    // Check collision with all walls
+    for (const auto& wall : walls) {
+        float wall_half_w = wall.w / 2.0f;
+        float wall_half_d = wall.d / 2.0f;
+
+        float wall_min_x = wall.x - wall_half_w;
+        float wall_max_x = wall.x + wall_half_w;
+        float wall_min_z = wall.z - wall_half_d;
+        float wall_max_z = wall.z + wall_half_d;
+
+        // Simple AABB collision detection
+        if (head.x >= wall_min_x && head.x <= wall_max_x &&
+            head.z >= wall_min_z && head.z <= wall_max_z) {
+            return true; // Collision
+        }
+    }
+    
+    return false;
 }
 
 bool checkSelfCollision() {
@@ -518,16 +567,11 @@ void drawScene() {
     glEnd();
     glDisable(GL_TEXTURE_2D);
 
-    // Walls
-    drawTexturedWall(0, -10, 20.5, 0.5, 1.5);  // South wall
-    drawTexturedWall(0, 10, 20.5, 0.5, 1.5);   // North wall
-    drawTexturedWall(-10, 0, 0.5, 20.5, 1.5);  // West wall
-    drawTexturedWall(10, 0, 0.5, 20.5, 1.5);   // East wall
+    // Draw all walls from the vector
+    for (const auto& wall : walls) {
+        drawTexturedWall(wall.x, wall.z, wall.w, wall.d, 1.5);
+    }
     
-    // Interior walls (obstacles)
-    drawTexturedWall(-4, -4, 4, 0.8, 1.2);
-    drawTexturedWall(5, 3, 0.8, 6, 1.2);
-
     // Draw apples
     glDisable(GL_LIGHTING);
     for (const auto& apple : apples) {
@@ -793,14 +837,13 @@ void init() {
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambientLight);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuseLight);
     
-    // Load textures
-    groundTexture = loadTexture("textures/grass_1.bmp", true);
-    bgTexture = loadTexture("textures/bg4.png", true);
-    wallTexture = loadTexture("textures/b2.bmp", true);
-    snakeTexture = loadTexture("textures/s2.bmp", true);
-    // snakeHeadTexture = loadTexture("textures/snake_head.png", true); 
+  
+    groundTexture = loadTexture("textures/grass.bmp", true);
+    bgTexture = loadTexture("textures/background.png", true);
+    wallTexture = loadTexture("textures/wall.bmp", true);
+    snakeTexture = loadTexture("textures/snake.bmp", true);
+   
     
-    // Load apple texture
     appleTexture = loadTexture("textures/apple.png", true);
     if (!appleTexture) {
         printf("Apple texture not found. Using colored apple.\n");
@@ -815,6 +858,7 @@ void init() {
     }
     
     // Initialize game objects
+    initWalls();
     initApples();
     
     printf("=== 3D Snake Game ===\n");
