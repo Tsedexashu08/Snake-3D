@@ -1,7 +1,6 @@
 # 3D Snake Game
 
 ![Screenshot of the game in action](screenshot.png)
-_Replace this text with an actual screenshot of the game._
 
 ## Overview
 
